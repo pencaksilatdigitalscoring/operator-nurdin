@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Operator Panel - CAHAYA DIGITAL SCORING</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+    
+    <!-- Library SheetJS untuk Export & Import Excel Template -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Library PDF.js untuk Import PDF Template -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+    </script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap');
+        body { 
+            font-family: 'Montserrat', sans-serif; 
+            background-color: #f1f5f9; 
+            color: #1e293b; 
+            margin: 0; 
+            height: 100vh; 
+            width: 100vw; 
+            overflow: hidden; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .custom-scroll { overflow-y: auto; }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        .save-notif { 
+            position: fixed; 
+            top: 20px; 
+            right: 20px; 
+            background: #10b981; 
+            color: white; 
+            padding: 15px 25px; 
+            border-radius: 15px; 
+            font-weight: bold; 
+            transform: translateX(200%); 
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); 
+            z-index: 60000; 
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .save-notif.show { transform: translateX(0); }
+
+        .modal-overlay { 
+            position: fixed; 
+            inset: 0; 
+            background: rgba(15, 23, 42, 0.9); 
+            z-index: 10000; 
+            display: none; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 20px; 
+            backdrop-filter: blur(4px); 
+        }
+        .modal-overlay.active { display: flex; }
+
+        .active-babak { 
+            background-color: #10b981 !important; 
+            color: white !important; 
+            border-color: #059669 !important; 
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3); 
+        }
+
+        .sudut-merah-bg { background-color: #ef4444; color: white; }
+        .sudut-biru-bg { background-color: #3b82f6; color: white; }
+
+        .tie-table { width: 100%; text-align: center; border-collapse: collapse; font-size: 10px; }
+        .tie-table th { padding: 8px; background: #f1f5f9; border: 1px solid #e2e8f0; text-transform: uppercase; font-weight: 800; }
+        .tie-table td { padding: 10px; border: 1px solid #e2e8f0; font-weight: 700; }
+        .tie-row-blue { background-color: #eff6ff; color: #1e40af; }
+        .tie-row-red { background-color: #fef2f2; color: #991b1b; }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen bg-slate-100 overflow-hidden">
+
+    <div id="save-ani" class="save-notif"><i class="fas fa-check-circle mr-2"></i> Data Tersimpan!</div>
+
+    <!-- MODAL TIE BREAK RESULT -->
+    <div id="modal-tie-result" class="modal-overlay">
+        <div class="bg-white rounded-[2rem] p-6 w-full max-w-sm text-center shadow-2xl mx-auto">
+            <h2 class="font-black text-lg uppercase italic text-slate-800 mb-4">Analisis Skor Seri</h2>
+            <div class="overflow-x-auto mb-6 rounded-xl border border-slate-200">
+                <table class="tie-table w-full">
+                    <thead>
+                        <tr>
+                            <th>Pesilat</th>
+                            <th>Total Pinalty</th>
+                            <th>Freq Teknis</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tie-table-body"></tbody>
+                </table>
+            </div>
+            <div id="tie-winner-box" class="hidden rounded-2xl p-4 mb-4 text-white shadow-inner">
+                <p class="text-[10px] font-bold uppercase opacity-80 mb-1">Pemenang Otomatis (Tie Break):</p>
+                <h3 id="tie-win-name" class="font-black text-sm uppercase leading-tight">NAMA PESERTA</h3>
+                <p id="tie-win-kont" class="text-[10px] font-bold uppercase italic mt-1">KONTINGEN</p>
+            </div>
+            <div id="tie-same-notif" class="hidden mb-4 p-4 bg-amber-100 text-amber-800 rounded-xl font-black text-[10px] uppercase italic border border-amber-200">
+                <i class="fas fa-exclamation-triangle text-lg mb-2 block"></i> Parameter Sama. Keputusan dikembalikan ke Dewan.
+            </div>
+            <button onclick="closeModal('modal-tie-result')" class="w-full bg-slate-800 hover:bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-xs shadow-lg active:scale-95 transition-all">Tutup Notifikasi</button>
+        </div>
+    </div>
+
+    <!-- HEADER LAYOUT -->
+    <div class="p-3 sm:p-4 bg-indigo-700 text-white shadow-md flex justify-between items-center shrink-0 z-20">
+        <!-- Spacer -->
+        <div class="w-[30px] sm:w-[150px]"></div>
+        
+        <div class="text-center flex-1">
+            <h2 class="text-xs sm:text-sm font-black uppercase tracking-widest leading-tight">Operator Panel</h2>
+            <p class="text-[8px] sm:text-[9px] font-bold text-indigo-200 uppercase tracking-widest">Digital Scoring</p>
+        </div>
+        
+        <div class="flex justify-end gap-1 sm:gap-2">
+            <!-- INPUT FILE HIDDEN -->
+            <input type="file" id="import-pdf-input" accept=".pdf" class="hidden" onchange="handleJadwalPDFImport(event)">
+            <input type="file" id="import-excel-input" accept=".xlsx, .xls" class="hidden" onchange="handleJadwalExcelImport(event)">
+            
+            <button onclick="document.getElementById('import-excel-input').click()" class="bg-emerald-500 hover:bg-emerald-600 text-white px-2.5 py-2 rounded-lg font-black text-[9px] uppercase active:scale-95 transition-all shadow-md flex items-center gap-1" title="Impor Jadwal dari Excel">
+                <i class="fas fa-file-excel"></i> <span class="hidden sm:inline">Impor Excel</span>
+            </button>
+            <button onclick="document.getElementById('import-pdf-input').click()" class="bg-orange-500 hover:bg-orange-600 text-white px-2.5 py-2 rounded-lg font-black text-[9px] uppercase active:scale-95 transition-all shadow-md flex items-center gap-1" title="Impor Jadwal dari PDF">
+                <i class="fas fa-file-pdf"></i> <span class="hidden sm:inline">Impor PDF</span>
+            </button>
+            <button onclick="exportTemplateExcel()" class="bg-blue-500 hover:bg-blue-600 text-white px-2.5 py-2 rounded-lg font-black text-[9px] uppercase active:scale-95 transition-all shadow-md flex items-center gap-1" title="Unduh Template Excel">
+                <i class="fas fa-download"></i> <span class="hidden sm:inline">Template</span>
+            </button>
+            <button onclick="clearAllMatches()" class="bg-rose-500 hover:bg-rose-600 text-white px-2.5 py-2 rounded-lg font-black text-[9px] uppercase active:scale-95 transition-all shadow-md flex items-center gap-1" title="Hapus Semua Data">
+                <i class="fas fa-trash-alt"></i> <span class="hidden sm:inline">Hapus</span>
+            </button>
+        </div>
+    </div>
+    
+    <!-- CONTROL STATION -->
+    <div class="bg-white border-b border-slate-200 shadow-sm shrink-0 z-10 p-3 sm:p-4">
+        <div class="max-w-4xl mx-auto">
+            <div class="flex justify-between items-end mb-4">
+                <div class="flex flex-col w-1/2 pr-2">
+                    <label class="text-[9px] font-black uppercase text-slate-400 tracking-widest mb-1"><i class="fas fa-stopwatch mr-1"></i> Durasi Partai</label>
+                    <select onchange="setMatchTimer(this.value)" class="bg-slate-50 border border-slate-200 text-[11px] font-black rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 w-full shadow-sm">
+                        <option value="">-- SET WAKTU --</option>
+                        <option value="60">1 Menit</option>
+                        <option value="90">1.5 Menit</option>
+                        <option value="120">2 Menit</option>
+                        <option value="180">3 Menit</option>
+                    </select>
+                </div>
+                <div class="text-right w-1/2 pl-2">
+                    <span class="text-[8px] font-black text-slate-400 block uppercase mb-1">TIMER AKTIF</span>
+                    <span id="op-timer-disp" class="text-4xl sm:text-5xl font-black text-indigo-900 font-mono tracking-tighter leading-none block drop-shadow-sm">02:00</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 mb-3">
+                <button onclick="timerCtrl('start')" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3 rounded-xl text-[10px] sm:text-xs uppercase active:scale-95 transition-all shadow-md flex flex-col items-center justify-center gap-1"><i class="fas fa-play"></i> GO</button>
+                <button onclick="timerCtrl('stop')" class="bg-amber-500 hover:bg-amber-600 text-white font-black py-3 rounded-xl text-[10px] sm:text-xs uppercase active:scale-95 transition-all shadow-md flex flex-col items-center justify-center gap-1"><i class="fas fa-pause"></i> PAUSE</button>
+                <button onclick="timerCtrl('reset')" class="bg-rose-500 hover:bg-rose-600 text-white font-black py-3 rounded-xl text-[10px] sm:text-xs uppercase active:scale-95 transition-all shadow-md flex flex-col items-center justify-center gap-1"><i class="fas fa-stop"></i> RESET</button>
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 mb-3">
+                <button onclick="setRound(1)" id="op-btn-b1" class="bg-white border-2 border-slate-200 text-slate-500 py-2 rounded-xl text-[10px] font-black uppercase active:scale-95 transition-all shadow-sm">Round I</button>
+                <button onclick="setRound(2)" id="op-btn-b2" class="bg-white border-2 border-slate-200 text-slate-500 py-2 rounded-xl text-[10px] font-black uppercase active:scale-95 transition-all shadow-sm">Round II</button>
+                <button onclick="setRound(3)" id="op-btn-b3" class="bg-white border-2 border-slate-200 text-slate-500 py-2 rounded-xl text-[10px] font-black uppercase active:scale-95 transition-all shadow-sm">Round III</button>
+            </div>
+
+            <!-- REMOTE KONTROL MONITOR -->
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="remoteSwitchMonView('score')" class="bg-slate-800 hover:bg-slate-900 text-white font-black py-3 rounded-xl text-[9px] sm:text-[10px] uppercase active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"><i class="fas fa-tv text-emerald-400"></i> <span class="hidden sm:inline">Monitor</span> Score</button>
+                <button onclick="remoteSwitchMonView('list')" class="bg-slate-800 hover:bg-slate-900 text-white font-black py-3 rounded-xl text-[9px] sm:text-[10px] uppercase active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"><i class="fas fa-list-ul text-amber-400"></i> <span class="hidden sm:inline">Monitor</span> List</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- MATCH LIST AREA (MOBILE FRIENDLY CARDS) -->
+    <div class="flex-1 overflow-y-auto p-3 sm:p-4 custom-scroll pb-24 shrink-1 relative">
+        <div id="operator-table-body" class="max-w-4xl mx-auto space-y-4">
+            <!-- Dinamis via JS -->
+        </div>
+    </div>
+    
+    <!-- PAGINATION (FIXED BOTTOM) -->
+    <div class="bg-white p-3 sm:p-4 border-t border-slate-200 flex justify-between items-center z-[40000] shrink-0 absolute bottom-0 left-0 right-0 shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
+        <div class="max-w-4xl mx-auto w-full flex justify-between items-center">
+            <button onclick="changeOperatorPage(-1)" class="bg-slate-100 text-slate-600 border border-slate-200 px-5 sm:px-8 py-3 rounded-xl text-[10px] font-black active:scale-95 transition-all hover:bg-slate-200 flex items-center gap-2"><i class="fas fa-chevron-left"></i> <span class="hidden sm:inline">PREV</span></button>
+            <span id="op-page-info" class="text-[11px] font-black text-indigo-700 uppercase tracking-widest bg-indigo-50 px-4 py-2 rounded-lg border border-indigo-100">Hal 1 / 100</span>
+            <button onclick="changeOperatorPage(1)" class="bg-slate-100 text-slate-600 border border-slate-200 px-5 sm:px-8 py-3 rounded-xl text-[10px] font-black active:scale-95 transition-all hover:bg-slate-200 flex items-center gap-2"><span class="hidden sm:inline">NEXT</span> <i class="fas fa-chevron-right"></i></button>
+        </div>
+    </div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+            apiKey: "AIzaSyDuC-mjc2LiPQ4Ouiq5DBsMPPad-pPb3h0",
+            authDomain: "kejurkot-ambon.firebaseapp.com",
+            databaseURL: "https://kejurkot-ambon-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "kejurkot-ambon",
+            storageBucket: "kejurkot-ambon.firebasestorage.app",
+            messagingSenderId: "545075134619",
+            appId: "1:545075134619:web:ec14b7287c636ebd80063e"
+        };
+
+    const app = initializeApp(firebaseConfig);
+    const database = getDatabase(app);
+    const dbRef = ref(database, 'pencak_scoring_state');
+
+    const INITIAL_STATE = {
+        timer: 120, babak: 1, isRunning: false, idx: 0, bertandingIdx: -1, persiapanIdx: -1,
+        monViewMode: 'score', 
+        matches: Array.from({length: 1000}, (_, i) => ({ 
+            p: i+1, m: "", b: "", km: "", kb: "", cat: "USIA DINI", kelas: "A", gender: "PUTRA", fase: "PENYISIHAN", status: 'idle', totalM: 0, totalB: 0, winner: "", winnerSide: "",
+            maxBabak: 3, maxTimer: 120, nextP: null, photoB: "", photoM: "",
+            statusB: "", beratB: "", statusM: "", beratM: "" // Parameter Timbang Badan
+        })),
+        merah: { juri: {j1:[0,0,0], j2:[0,0,0], j3:[0,0,0]}, penHistory: [], jat: 0, jatHistory: [], pukulanFreq: 0, tendanganFreq: 0, dis: false, ud: false, wmp: false },
+        biru: { juri: {j1:[0,0,0], j2:[0,0,0], j3:[0,0,0]}, penHistory: [], jat: 0, jatHistory: [], pukulanFreq: 0, tendanganFreq: 0, dis: false, ud: false, wmp: false },
+        buffer: { merah: { v1: {j1:0, j2:0, j3:0}, v2: {j1:0, j2:0, j3:0} }, biru: { v1: {j1:0, j2:0, j3:0}, v2: {j1:0, j2:0, j3:0} } },
+        juriStatus: { j1: false, j2: false, j3: false },
+        var: { active: false, type: '', votes: { j1: '', j2: '', j3: '' } },
+        lastHit: { sudut: '', time: 0, multiple: [], type: 0 }
+    };
+
+    window.state = INITIAL_STATE;
+    let tInt = null;
+    window.operatorPage = 0;
+
+    onValue(dbRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) { 
+            window.state = data; 
+            updateUI(); 
+            renderOperatorTable();
+        } else { 
+            set(dbRef, INITIAL_STATE); 
+        }
+    });
+
+    window.broadcast = function(path = "", value = null) {
+        if (path !== "") { 
+            const specificRef = ref(database, 'pencak_scoring_state/' + path); 
+            set(specificRef, value); 
+        } else { 
+            set(dbRef, window.state); 
+        }
+    }
+
+    window.showNotif = function(customMsg) { 
+        const n = document.getElementById('save-ani'); 
+        if(customMsg) n.innerHTML = customMsg;
+        else n.innerHTML = '<i class="fas fa-check-circle mr-2"></i> Data Tersimpan!';
+        n.classList.add('show'); 
+        setTimeout(() => n.classList.remove('show'), 2000); 
+    }
+
+    window.openModal = function(id) { document.getElementById(id).classList.add('active'); }
+    window.closeModal = function(id) { document.getElementById(id).classList.remove('active'); }
+
+    window.updateUI = function() {
+        const tStr = (s) => `${Math.floor(s/60).toString().padStart(2,'0')}:${((s||0)%60).toString().padStart(2,'0')}`;
+        const el = document.getElementById('op-timer-disp'); 
+        if(el) el.innerText = tStr(window.state.timer);
+        
+        [1,2,3].forEach(b => { 
+            const btn = document.getElementById('op-btn-b' + b); 
+            if(btn) btn.classList.toggle('active-babak', window.state.babak === b); 
+        });
+    }
+
+    // Timer Logic
+    window.setMatchTimer = function(seconds) {
+        if(!seconds) return;
+        const s = parseInt(seconds);
+        window.broadcast('timer', s);
+        if(window.state.bertandingIdx >= 0) {
+            window.broadcast(`matches/${window.state.bertandingIdx}/maxTimer`, s);
+        }
+        showNotif();
+    }
+
+    window.timerCtrl = function(cmd) { 
+        if(cmd === 'start') { 
+            window.broadcast('isRunning', true); 
+            startTimerLogic(); 
+        } else if(cmd === 'stop') { 
+            window.broadcast('isRunning', false); 
+            if(tInt) clearInterval(tInt); 
+        } else if(cmd === 'reset') { 
+            window.broadcast('isRunning', false); 
+            const activeMatch = window.state.matches[window.state.bertandingIdx] || window.state.matches[window.state.idx];
+            window.broadcast('timer', activeMatch.maxTimer || 120); 
+        } 
+    }
+
+    function startTimerLogic() { 
+        if(tInt) clearInterval(tInt); 
+        tInt = setInterval(() => { 
+            if(window.state.isRunning && window.state.timer > 0) 
+                window.broadcast('timer', window.state.timer - 1); 
+            else if(window.state.timer <= 0) { 
+                clearInterval(tInt); 
+                window.broadcast('isRunning', false); 
+            } 
+        }, 1000); 
+    }
+
+    window.setRound = function(n) { 
+        if(!window.state.isRunning) window.broadcast('babak', n); 
+    }
+
+    window.remoteSwitchMonView = function(mode) {
+        window.broadcast('monViewMode', mode);
+        showNotif();
+    }
+
+    // -------------------------------------------------------------
+    // EXPORT TEMPLATE EXCEL
+    // -------------------------------------------------------------
+    window.exportTemplateExcel = function() {
+        const matches = window.state.matches.filter(m => m.b || m.m);
+        let data = [];
+        
+        if (matches.length > 0) {
+            data = matches.map((m, i) => ({
+                "NO": i + 1,
+                "PARTAI": m.p,
+                "FASE": m.fase,
+                "KATEGORI": `${m.kelas} ${m.cat} ${m.gender}`,
+                "NAMA PESERTA (BIRU)": m.b,
+                "KONTINGEN (BIRU)": m.kb,
+                "BB (BIRU)": m.beratB || "",
+                "NAMA PESERTA (MERAH)": m.m,
+                "KONTINGEN (MERAH)": m.km,
+                "BB (MERAH)": m.beratM || ""
+            }));
+        } else {
+            // Berikan dummy/contoh pengisian untuk panduan Panitia
+            data = [{
+                "NO": 1,
+                "PARTAI": 1,
+                "FASE": "PENYISIHAN",
+                "KATEGORI": "A REMAJA PUTRA",
+                "NAMA PESERTA (BIRU)": "AJIS",
+                "KONTINGEN (BIRU)": "NTB",
+                "BB (BIRU)": "45",
+                "NAMA PESERTA (MERAH)": "ALDO",
+                "KONTINGEN (MERAH)": "JATIM",
+                "BB (MERAH)": "46"
+            }];
+        }
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        
+        const colWidths = [
+            { wch: 5 }, { wch: 8 }, { wch: 15 }, { wch: 20 },
+            { wch: 25 }, { wch: 20 }, { wch: 10 },
+            { wch: 25 }, { wch: 20 }, { wch: 10 }
+        ];
+        ws['!cols'] = colWidths;
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Jadwal_Partai");
+        XLSX.writeFile(wb, "Template_Jadwal_Partai.xlsx");
+    }
+
+    // -------------------------------------------------------------
+    // LOGIKA IMPOR EXCEL (OTOMATIS SESUAI TEMPLATE)
+    // -------------------------------------------------------------
+    window.handleJadwalExcelImport = function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const notif = document.getElementById('save-ani');
+        notif.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Membaca File Excel...';
+        notif.classList.add('show');
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "" }); // defval ensures empty cells are parsed
+
+                let importedMatches = [];
+
+                jsonData.forEach(row => {
+                    const keys = Object.keys(row);
+                    const getVal = (possibleNames) => {
+                        for(let k of keys) {
+                            if(possibleNames.some(pn => k.toUpperCase().includes(pn))) return row[k].toString().trim();
+                        }
+                        return "";
+                    };
+
+                    let partaiStr = getVal(["PARTAI"]);
+                    if(!partaiStr) partaiStr = getVal(["NO"]);
+                    let partai = parseInt(partaiStr);
+
+                    if(isNaN(partai) || partai <= 0) return; // Abaikan baris kosong
+
+                    let fase = getVal(["FASE"]) || "PENYISIHAN";
+                    let katString = getVal(["KATEGORI"]) || "A DEWASA PUTRA";
+                    let bName = getVal(["NAMA PESERTA (BIRU)", "NAMA BIRU", "BIRU"]);
+                    let bKont = getVal(["KONTINGEN (BIRU)", "KONTINGEN BIRU", "ASAL BIRU"]);
+                    let bbBiru = getVal(["BB (BIRU)", "BB BIRU", "BERAT BIRU"]);
+                    let mName = getVal(["NAMA PESERTA (MERAH)", "NAMA MERAH", "MERAH"]);
+                    let mKont = getVal(["KONTINGEN (MERAH)", "KONTINGEN MERAH", "ASAL MERAH"]);
+                    let bbMerah = getVal(["BB (MERAH)", "BB MERAH", "BERAT MERAH"]);
+
+                    if (!bName) { bName = "BYE"; bKont = "-"; }
+                    if (!mName) { mName = "BYE"; mKont = "-"; }
+
+                    // Parse Kategori
+                    let kParts = katString.split(" ");
+                    let kelas = kParts[0] || "A";
+                    let gender = (katString.toUpperCase().includes("PUTRI") || katString.toUpperCase().includes("PI")) ? "PUTRI" : "PUTRA";
+                    let cat = kParts.slice(1).join(" ").replace(/(PUTRA|PUTRI|PI|PA)/ig, '').trim() || "DEWASA";
+                    if (!cat) cat = "DEWASA";
+
+                    importedMatches.push({
+                        p: partai,
+                        fase: fase.toUpperCase(),
+                        kelas: kelas.toUpperCase(),
+                        cat: cat.toUpperCase(),
+                        gender: gender.toUpperCase(),
+                        b: bName.toUpperCase(),
+                        kb: bKont.toUpperCase(),
+                        beratB: bbBiru,
+                        photoB: "",
+                        m: mName.toUpperCase(),
+                        km: mKont.toUpperCase(),
+                        beratM: bbMerah,
+                        photoM: "",
+                        maxBabak: 3,
+                        maxTimer: 120,
+                        status: 'idle',
+                        totalM: 0,
+                        totalB: 0,
+                        statusB: "",
+                        statusM: ""
+                    });
+                });
+
+                if (importedMatches.length > 0) {
+                    let currentMatches = [...window.state.matches];
+                    importedMatches.forEach((m) => {
+                        let targetIdx = m.p - 1;
+                        if (targetIdx >= 0 && targetIdx < currentMatches.length) {
+                            currentMatches[targetIdx] = { ...currentMatches[targetIdx], ...m };
+                        }
+                    });
+                    
+                    window.broadcast('matches', currentMatches);
+                    notif.innerHTML = `<i class="fas fa-check-circle mr-2"></i> ${importedMatches.length} Partai Diimpor!`;
+                    setTimeout(() => notif.classList.remove('show'), 2000);
+                } else {
+                    notif.classList.remove('show');
+                    alert("Gagal membaca data Excel. Pastikan format kolom sesuai dengan Template.");
+                }
+            } catch (error) {
+                console.error(error);
+                notif.classList.remove('show');
+                alert("Terjadi kesalahan saat memproses file Excel.");
+            }
+            event.target.value = ""; // Reset file input
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // -------------------------------------------------------------
+    // LOGIKA IMPOR PDF JADWAL (CERDAS & FLEKSIBEL)
+    // -------------------------------------------------------------
+    window.handleJadwalPDFImport = async function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (typeof pdfjsLib === 'undefined') {
+            alert("Library PDF belum dimuat. Pastikan koneksi internet stabil.");
+            return;
+        }
+
+        try {
+            const notif = document.getElementById('save-ani');
+            notif.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Membaca File PDF...';
+            notif.classList.add('show');
+
+            const typedarray = new Uint8Array(await file.arrayBuffer());
+            const pdf = await pdfjsLib.getDocument(typedarray).promise;
+            
+            let importedMatches = [];
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+
+                let rowsMap = {};
+                textContent.items.forEach(item => {
+                    const y = Math.round(item.transform[5] / 4) * 4; 
+                    if (!rowsMap[y]) rowsMap[y] = [];
+                    rowsMap[y].push(item);
+                });
+
+                const sortedY = Object.keys(rowsMap).sort((a, b) => b - a);
+
+                sortedY.forEach(y => {
+                    let rowItems = rowsMap[y].sort((a, b) => a.transform[4] - b.transform[4]);
+                    
+                    let mergedTexts = [];
+                    let currentStr = "";
+                    let lastRight = -1000;
+                    
+                    rowItems.forEach(item => {
+                        let str = item.str.trim();
+                        if(!str) return;
+                        
+                        let x = item.transform[4];
+                        let width = item.width || (str.length * 5);
+                        
+                        if (x - lastRight < 8 && currentStr !== "") {
+                            currentStr += " " + str;
+                        } else {
+                            if(currentStr !== "") mergedTexts.push(currentStr);
+                            currentStr = str;
+                        }
+                        lastRight = x + width;
+                    });
+                    
+                    if(currentStr !== "") mergedTexts.push(currentStr);
+
+                    let texts = mergedTexts.map(t => t.trim()).filter(t => t.length > 0);
+                    let rowStr = texts.join(" ").toLowerCase();
+
+                    if (rowStr.includes("nama peserta") || rowStr.includes("kategori") || texts.length < 3) return;
+
+                    let noMatch = texts[0].match(/^(\d+)$/);
+                    if (!noMatch) return; 
+
+                    let partai = parseInt(texts[0]);
+                    let shiftIdx = 1;
+                    
+                    if (texts[1] && texts[1].match(/^(\d+)$/)) {
+                        partai = parseInt(texts[1]);
+                        shiftIdx = 2;
+                    }
+
+                    let rem = texts.slice(shiftIdx);
+                    
+                    let fase = "PENYISIHAN";
+                    let katString = "A DEWASA PUTRA";
+                    let bName = "", bKont = "", bbBiru = "";
+                    let mName = "", mKont = "", bbMerah = "";
+
+                    let extractWeight = (s) => {
+                        if (!s) return null;
+                        s = s.replace(/\s/g, '');
+                        let match = s.match(/^(\d{2,3}(?:[.,]\d+)?)[kgKG]*$/);
+                        if (match) return match[1];
+                        if (s.toLowerCase().includes("kg") && s.match(/\d/)) return s.replace(/[^\d.,]/g, '');
+                        return null;
+                    };
+
+                    let phaseKeywords = ["PENYISIHAN", "FINAL", "1/2", "1/4", "1/8", "SEMI", "PEREMPAT", "BABAK"];
+                    if (rem.length > 0 && phaseKeywords.some(k => rem[0].toUpperCase().includes(k))) {
+                        fase = rem.shift();
+                    } else if (rem.length >= 6) {
+                        fase = rem.shift();
+                    }
+
+                    let catKeywords = ["PUTRA", "PUTRI", "PA", "PI", "REMAJA", "DEWASA", "DINI", "BEBAS", "TUNGGAL", "GANDA", "REGU", "KELAS", "PRA"];
+                    if (rem.length > 0 && catKeywords.some(k => rem[0].toUpperCase().includes(k))) {
+                        katString = rem.shift();
+                    } else if (rem.length >= 5) {
+                        katString = rem.shift();
+                    }
+
+                    for (let j = 0; j < rem.length; j++) {
+                        let w = extractWeight(rem[j]);
+                        if (w) {
+                            if (j <= rem.length / 2) bbBiru = w;
+                            else bbMerah = w;
+                            rem.splice(j, 1); 
+                            j--;
+                        }
+                    }
+
+                    if (rem.length === 2) {
+                        bName = rem[0]; mName = rem[1];
+                    } else if (rem.length === 3) {
+                        bName = rem[0]; bKont = rem[1]; mName = rem[2];
+                        if (mName.toUpperCase() === "BYE") mKont = "-";
+                    } else if (rem.length >= 4) {
+                        bName = rem[0]; bKont = rem[1]; 
+                        mName = rem[2]; mKont = rem[3];
+                    } else if (rem.length === 1) {
+                        bName = rem[0];
+                    }
+
+                    if (!bName) { bName = "BYE"; bKont = "-"; }
+                    if (!mName) { mName = "BYE"; mKont = "-"; }
+                    if (!bKont && bName !== "BYE") bKont = "";
+                    if (!mKont && mName !== "BYE") mKont = "";
+
+                    let kParts = katString.split(" ");
+                    let kelas = kParts[0] || "A";
+                    let gender = (katString.toUpperCase().includes("PUTRI") || katString.toUpperCase().includes("PI")) ? "PUTRI" : "PUTRA";
+                    let cat = kParts.slice(1).join(" ").replace(/(PUTRA|PUTRI|PI|PA)/ig, '').trim() || "DEWASA";
+                    if (!cat) cat = "DEWASA";
+
+                    if (bName && mName) {
+                        importedMatches.push({
+                            p: partai, 
+                            fase: fase.toUpperCase(), 
+                            kelas: kelas.toUpperCase(), 
+                            cat: cat.toUpperCase(), 
+                            gender: gender.toUpperCase(),
+                            b: bName.toUpperCase(), 
+                            kb: bKont.toUpperCase(), 
+                            beratB: bbBiru, 
+                            photoB: "",
+                            m: mName.toUpperCase(), 
+                            km: mKont.toUpperCase(), 
+                            beratM: bbMerah, 
+                            photoM: "",
+                            maxBabak: 3, 
+                            maxTimer: 120, 
+                            status: 'idle', 
+                            totalM: 0, 
+                            totalB: 0,
+                            statusB: "", 
+                            statusM: ""
+                        });
+                    }
+                });
+            }
+
+            if (importedMatches.length > 0) {
+                let currentMatches = [...window.state.matches];
+                importedMatches.forEach((m) => {
+                    let targetIdx = m.p - 1;
+                    if (targetIdx >= 0 && targetIdx < currentMatches.length) {
+                        currentMatches[targetIdx] = { ...currentMatches[targetIdx], ...m };
+                    }
+                });
+                
+                window.broadcast('matches', currentMatches);
+                showNotif(`<i class="fas fa-check-circle mr-2"></i> ${importedMatches.length} Partai Diimpor!`);
+            } else {
+                document.getElementById('save-ani').classList.remove('show');
+                alert("Gagal membaca tabel. Pastikan baris isi tabel diawali oleh angka Partai/Urut sesuai template.");
+            }
+
+        } catch (err) {
+            console.error(err);
+            document.getElementById('save-ani').classList.remove('show');
+            alert("Gagal memproses file PDF. Format tidak dikenali atau file rusak.");
+        }
+        event.target.value = ""; // Reset File Input
+    }
+
+    // Mobile Friendly Table (Cards) Rendering Logic
+    window.renderOperatorTable = function() { 
+        const container = document.getElementById('operator-table-body'); 
+        const start = window.operatorPage * 10; 
+        const pageMatches = window.state.matches.filter(m => m.m || m.b).slice(start, start + 10); 
+        
+        container.innerHTML = pageMatches.map((m, i) => { 
+            const isB = window.state.bertandingIdx === m.p-1;
+            const isP = window.state.persiapanIdx === m.p-1;
+            const isS = m.status === 'selesai'; 
+
+            // Helper format Timbang Badan Badge
+            const getTbBadge = (status, berat) => {
+                const st = status || 'BELUM';
+                const br = berat ? `${berat}Kg` : '-';
+                if(st === 'SAH') return `<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[8px] font-black border border-emerald-200 mt-1 inline-block shadow-sm"><i class="fas fa-check-circle mr-1"></i> SAH (${br})</span>`;
+                if(st === 'TIDAK SAH') return `<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[8px] font-black border border-rose-200 mt-1 inline-block shadow-sm"><i class="fas fa-times-circle mr-1"></i> GAGAL (${br})</span>`;
+                return `<span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded text-[8px] font-bold border border-slate-200 mt-1 inline-block shadow-sm"><i class="fas fa-clock mr-1"></i> BELUM TB (${br})</span>`;
+            };
+
+            const tbRed = m.m !== "BYE" ? getTbBadge(m.statusM, m.beratM) : '';
+            const tbBlue = m.b !== "BYE" ? getTbBadge(m.statusB, m.beratB) : '';
+
+            // Status Styling
+            let borderClass = "border-slate-200";
+            let statusBadge = "";
+            if(isB) {
+                borderClass = "border-emerald-500 ring-2 ring-emerald-500/20";
+                statusBadge = `<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest shadow-md z-10 animate-pulse"><i class="fas fa-circle text-[6px] text-white mr-1 mb-0.5 align-middle"></i> LIVE</span>`;
+            } else if(isP) {
+                borderClass = "border-amber-400";
+                statusBadge = `<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-500 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest shadow-md z-10"><i class="fas fa-clock text-[8px] text-white mr-1 mb-0.5 align-middle"></i> SIAP</span>`;
+            } else if(isS) {
+                borderClass = "border-indigo-200 opacity-80";
+                statusBadge = `<span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-indigo-600 text-white px-3 py-1 rounded-full text-[9px] font-black tracking-widest shadow-md z-10"><i class="fas fa-flag-checkered text-[8px] text-white mr-1 mb-0.5 align-middle"></i> SELESAI</span>`;
+            }
+
+            // Logika Warna Kotak & Abu-Abu bila Gugur
+            const isBiruGugur = isS && m.winnerSide === 'merah';
+            const isMerahGugur = isS && m.winnerSide === 'biru';
+
+            const bgBiru = isBiruGugur ? 'bg-slate-400 border-slate-500' : 'bg-blue-600 border-blue-700 shadow-inner';
+            const subBiru = isBiruGugur ? 'text-slate-200' : 'text-blue-200';
+
+            const bgMerah = isMerahGugur ? 'bg-slate-400 border-slate-500' : 'bg-red-600 border-red-700 shadow-inner';
+            const subMerah = isMerahGugur ? 'text-slate-200' : 'text-red-200';
+
+            return `
+            <div class="bg-white rounded-2xl shadow-sm border-2 ${borderClass} flex flex-col relative mt-3 transition-all hover:shadow-md">
+                ${statusBadge}
+                
+                <!-- Header Partai -->
+                <div class="bg-slate-50 px-4 py-3 rounded-t-xl border-b border-slate-100 flex justify-between items-center">
+                    <span class="bg-slate-800 text-white px-2 py-1 rounded shadow-inner text-[10px] font-black tracking-wider uppercase">PARTAI ${m.p}</span>
+                    <div class="text-right">
+                        <span class="text-[9px] font-black text-slate-800 uppercase block leading-tight tracking-wider">${m.fase}</span>
+                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-widest">${m.kelas} ${m.cat} ${m.gender}</span>
+                    </div>
+                </div>
+
+                <!-- Sudut Merah & Biru (Flex layout) -->
+                <div class="p-3 sm:p-4 flex flex-col md:flex-row items-stretch justify-between relative gap-2">
+                    
+                    <!-- Sudut Biru -->
+                    <div class="flex-1 ${bgBiru} rounded-xl p-3 border relative text-left">
+                        <div class="font-black text-white text-xs sm:text-sm mb-0.5 uppercase tracking-wide leading-tight truncate" title="${m.b}">${m.b}</div>
+                        <div class="text-[9px] ${subBiru} font-bold uppercase truncate" title="${m.kb}"><i class="fas fa-map-marker-alt mr-1 opacity-80"></i>${m.kb}</div>
+                        ${tbBlue}
+                    </div>
+
+                    <!-- VS Divider -->
+                    <div class="flex items-center justify-center shrink-0 z-10 my-2 md:my-0">
+                        <span class="bg-slate-200 text-slate-500 text-[9px] font-black px-2 py-1 rounded-lg italic border border-slate-300 shadow-sm">VS</span>
+                    </div>
+
+                    <!-- Sudut Merah -->
+                    <div class="flex-1 ${bgMerah} rounded-xl p-3 border relative text-right md:text-left">
+                        <div class="font-black text-white text-xs sm:text-sm mb-0.5 uppercase tracking-wide leading-tight truncate" title="${m.m}">${m.m}</div>
+                        <div class="text-[9px] ${subMerah} font-bold uppercase truncate" title="${m.km}"><i class="fas fa-map-marker-alt mr-1 opacity-80"></i>${m.km}</div>
+                        ${tbRed}
+                    </div>
+                </div>
+
+                <!-- Footer Actions -->
+                <div class="bg-slate-50 p-3 rounded-b-xl border-t border-slate-100 flex flex-col sm:flex-row gap-3 justify-between items-center">
+                    
+                    <!-- Match Controls -->
+                    <div class="flex gap-2 w-full sm:w-auto">
+                        <button onclick="setMatchStatus(${m.p-1}, 'bertanding')" class="flex-1 sm:flex-none text-[9px] font-black px-4 py-2.5 rounded-xl transition-all uppercase tracking-wider ${isB ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.4)] border border-emerald-600' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}"><i class="fas fa-play mr-1"></i> TANDING</button>
+                        <button onclick="setMatchStatus(${m.p-1}, 'persiapan')" class="flex-1 sm:flex-none text-[9px] font-black px-4 py-2.5 rounded-xl transition-all uppercase tracking-wider ${isP ? 'bg-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.4)] border border-amber-600' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}"><i class="fas fa-clock mr-1"></i> SIAP</button>
+                        <button onclick="setMatchStatus(${m.p-1}, 'selesai')" class="flex-1 sm:flex-none text-[9px] font-black px-4 py-2.5 rounded-xl transition-all uppercase tracking-wider ${isS ? 'bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.4)] border border-indigo-600' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'}"><i class="fas fa-flag-checkered mr-1"></i> FINISH</button>
+                    </div>
+                    
+                    <!-- Lock & Delete -->
+                    <div class="flex gap-2 w-full sm:w-auto justify-end border-t border-slate-200 sm:border-0 pt-3 sm:pt-0">
+                        <button onclick="editMatch(${m.p-1})" class="bg-white border border-slate-200 text-slate-400 w-10 h-10 rounded-xl shadow-sm hover:bg-slate-100 hover:text-slate-600 active:scale-90 transition-all flex items-center justify-center text-xs" title="Edit Terkunci (Gunakan Sekretaris)"><i class="fas fa-lock"></i></button>
+                        <button onclick="deleteMatch(${m.p-1})" class="bg-rose-50 border border-rose-200 text-rose-500 w-10 h-10 rounded-xl shadow-sm hover:bg-rose-100 active:scale-90 transition-all flex items-center justify-center text-xs" title="Hapus Partai"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>`; 
+        }).join(''); 
+        
+        const total = window.state.matches.filter(m => m.m || m.b).length; 
+        document.getElementById('op-page-info').innerText = `Hal ${window.operatorPage + 1} / ${Math.max(1, Math.ceil(total/10))}`; 
+    }
+
+    window.changeOperatorPage = function(v) { 
+        const total = window.state.matches.filter(m => m.m || m.b).length; 
+        const max = Math.max(0, Math.ceil(total/10)-1); 
+        let n = window.operatorPage+v; 
+        if(n>=0 && n<=max){
+            window.operatorPage=n;
+            renderOperatorTable();
+        } 
+    }
+
+    window.editMatch = function(idx) { 
+        alert('Fitur edit form penuh hanya tersedia di Panel Sekretaris (Terpisah).');
+    }
+
+    window.deleteMatch = function(idx) { 
+        if(confirm("Hapus data partai ini? Aksi tidak dapat dikembalikan.")) { 
+            const updated = [...window.state.matches]; 
+            updated[idx] = { ...INITIAL_STATE.matches[0], p: idx+1 }; 
+            window.broadcast('matches', updated); 
+        } 
+    }
+
+    window.clearAllMatches = function() { 
+        if(confirm("Peringatan: Hapus semua jadwal partai? Data yang terhapus tidak dapat kembali.")) {
+            window.broadcast('matches', INITIAL_STATE.matches); 
+        }
+    }
+
+    // Match Status and Tie Break Logic
+    window.calculateTotal = function(s) { 
+        const sc = window.state[s]; 
+        if(sc.dis || sc.ud || sc.wmp) return 0; 
+        const j1T = (sc.juri.j1 || [0,0,0]).reduce((a,b)=>a+b,0), j2T = (sc.juri.j2 || [0,0,0]).reduce((a,b)=>a+b,0), j3T = (sc.juri.j3 || [0,0,0]).reduce((a,b)=>a+b,0); 
+        const sorted = [j1T, j2T, j3T].sort((a,b)=>a-b); 
+        const tot = sorted[1]; 
+        const pMap = { teguran1:1, teguran2:2, peringatan1:5, peringatan2:10 }; 
+        let tp = 0; 
+        (sc.penHistory || []).forEach(i => tp += (pMap[i.type]||0)); 
+        return (tot || 0) + (sc.jat || 0) - tp; 
+    }
+
+    function processTieBreak(mb, tm, tb) {
+        const penB = (window.state.biru.penHistory || []).length; 
+        const penM = (window.state.merah.penHistory || []).length; 
+        const techB = (window.state.biru.pukulanFreq || 0) + (window.state.biru.tendanganFreq || 0); 
+        const techM = (window.state.merah.pukulanFreq || 0) + (window.state.merah.tendanganFreq || 0); 
+        
+        const tableBody = document.getElementById('tie-table-body'); 
+        tableBody.innerHTML = `
+            <tr class="tie-row-blue uppercase"><td>BIRU</td><td>${penB}</td><td>${techB}</td></tr>
+            <tr class="tie-row-red uppercase"><td>MERAH</td><td>${penM}</td><td>${techM}</td></tr>
+        `; 
+        
+        const winBox = document.getElementById('tie-winner-box'); 
+        const sameNotif = document.getElementById('tie-same-notif'); 
+        winBox.classList.add('hidden'); 
+        sameNotif.classList.add('hidden');
+        
+        let winSide = ""; 
+        if (penB < penM) winSide = "biru"; 
+        else if (penM < penB) winSide = "merah"; 
+        else { 
+            if (techB > techM) winSide = "biru"; 
+            else if (techM > techB) winSide = "merah"; 
+            else winSide = "tie"; 
+        }
+        
+        if (winSide === "tie") {
+            sameNotif.classList.remove('hidden'); 
+        } else { 
+            winBox.classList.remove('hidden', 'sudut-biru-bg', 'sudut-merah-bg'); 
+            winBox.classList.add(winSide === 'biru' ? 'sudut-biru-bg' : 'sudut-merah-bg'); 
+            document.getElementById('tie-win-name').innerText = winSide === 'biru' ? mb.b : mb.m; 
+            document.getElementById('tie-win-kont').innerText = winSide === 'biru' ? mb.kb : mb.km; 
+        }
+        
+        openModal('modal-tie-result'); 
+        return winSide;
+    }
+
+    function propagateWinner(currentMatchIdx) {
+        const m = window.state.matches[currentMatchIdx]; 
+        if (!m.nextP) return; 
+        
+        const nextIdx = m.nextP.p - 1; 
+        const nextMatch = { ...window.state.matches[nextIdx] }; 
+        const winnerName = m.winner; 
+        const winnerKont = (m.winnerSide === 'biru') ? m.kb : m.km; 
+        const winnerPhoto = (m.winnerSide === 'biru') ? m.photoB : m.photoM; 
+        
+        if (m.nextP.side === 'biru') { 
+            nextMatch.b = winnerName; 
+            nextMatch.kb = winnerKont; 
+            nextMatch.photoB = winnerPhoto; 
+        } else { 
+            nextMatch.m = winnerName; 
+            nextMatch.km = winnerKont; 
+            nextMatch.photoM = winnerPhoto; 
+        } 
+        
+        const opponent = (m.nextP.side === 'biru') ? nextMatch.m : nextMatch.b; 
+        
+        if (opponent === "BYE" && winnerName !== "BYE") { 
+            nextMatch.status = 'selesai'; 
+            nextMatch.winner = winnerName; 
+            nextMatch.winnerSide = m.nextP.side; 
+            nextMatch.totalB = 0; 
+            nextMatch.totalM = 0; 
+            window.broadcast(`matches/${nextIdx}`, nextMatch); 
+            setTimeout(() => propagateWinner(nextIdx), 100); 
+        } else { 
+            window.broadcast(`matches/${nextIdx}`, nextMatch); 
+        }
+    }
+
+    function resetActiveMatchData() { 
+        window.broadcast('babak', 1); 
+        window.broadcast('isRunning', false); 
+        window.broadcast('merah', INITIAL_STATE.merah); 
+        window.broadcast('biru', INITIAL_STATE.biru); 
+        window.broadcast('buffer', INITIAL_STATE.buffer); 
+        window.broadcast('var', INITIAL_STATE.var); 
+    }
+
+    window.setMatchStatus = function(idx, status) { 
+        if(status === 'bertanding') { 
+            if(window.state.bertandingIdx === idx) {
+                window.broadcast('bertandingIdx', -1); 
+            } else { 
+                window.broadcast('bertandingIdx', idx); 
+                window.broadcast('idx', idx); 
+                resetActiveMatchData(); 
+                
+                const matchTimer = window.state.matches[idx].maxTimer || 120;
+                window.broadcast('timer', matchTimer); 
+            } 
+        } 
+        else if(status === 'persiapan') { 
+            window.broadcast('persiapanIdx', (window.state.persiapanIdx === idx) ? -1 : idx); 
+        } 
+        else if(status === 'selesai') { 
+            const m = {...window.state.matches[idx]}; 
+            m.status = 'selesai'; 
+            let tm = calculateTotal('merah'), tb = calculateTotal('biru'); 
+            m.totalM = tm; 
+            m.totalB = tb; 
+            
+            if (tm === tb) { 
+                const result = processTieBreak(m, tm, tb); 
+                m.winnerSide = result; 
+            } else { 
+                m.winnerSide = (tm > tb) ? 'merah' : 'biru'; 
+            } 
+            
+            if (m.winnerSide !== 'tie') { 
+                m.winner = (m.winnerSide === 'merah') ? m.m : m.b; 
+                window.broadcast(`matches/${idx}`, m); 
+                setTimeout(() => propagateWinner(idx), 200); 
+            } else { 
+                m.winner = "KEPUTUSAN DEWAN"; 
+                window.broadcast(`matches/${idx}`, m); 
+            } 
+        } 
+    }
+</script>
+</body>
+</html>
